@@ -4,7 +4,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from keep_alive import keep_alive
-from core.teachx_auth import send_otp, verify_otp_and_login, login_with_password
+from core.teachx_auth import send_otp, verify_otp_and_login
 from core.teachx import get_auth_session, get_my_courses
 
 keep_alive()
@@ -21,7 +21,7 @@ def get_login_choice_menu():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📲 OTP Login", callback_data="choice_otp"),
-            InlineKeyboardButton("🔑 Password Login", callback_data="choice_pass")
+            InlineKeyboardButton("🎫 Token Login", callback_data="choice_token")
         ]
     ])
 
@@ -53,12 +53,12 @@ async def callback_handler(client: Client, query: CallbackQuery):
             "`/login 91XXXXXXXXXX`"
         )
 
-    elif query.data == "choice_pass":
+    elif query.data == "choice_token":
         await query.answer()
         await query.message.reply_text(
-            "🔑 **Password Login Selected**\n\n"
-            "लॉगिन करने के लिए अपना Number और Password भेजें:\n"
-            "`/passlogin 8569965583 password123`"
+            "🎫 **Token Login Selected**\n\n"
+            "लॉगिन करने के लिए अपना Token भेजें:\n"
+            "`/tokenlogin YOUR_AUTH_TOKEN`"
         )
 
     elif query.data == "btn_courses":
@@ -102,10 +102,10 @@ async def callback_handler(client: Client, query: CallbackQuery):
         await query.answer()
         await query.message.reply_text(
             "📌 **Commands Guide:**\n\n"
-            "• `/start` - लॉगिन ऑप्शन देखने के लिए\n"
+            "• `/start` - लॉगिन बटन देखने के लिए\n"
             "• `/login <phone>` - OTP भेजने के लिए\n"
             "• `/verify <otp>` - OTP वेरीफाई करने के लिए\n"
-            "• `/passlogin <phone> <password>` - पासवर्ड से लॉगिन करने के लिए",
+            "• `/tokenlogin <token>` - टोकन से डायरेक्ट लॉगिन",
             reply_markup=get_main_menu()
         )
 
@@ -156,29 +156,30 @@ async def verify_cmd(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"❌ Login Failed: {str(e)}")
 
-@app.on_message(filters.command("passlogin"))
-async def passlogin_cmd(client: Client, message: Message):
-    args = message.text.split()
-    if len(args) < 3:
-        await message.reply_text("❌ नंबर और पासवर्ड दोनों दर्ज करें!\nExample: `/passlogin 9876543210 mypassword`")
+@app.on_message(filters.command("tokenlogin"))
+async def tokenlogin_cmd(client: Client, message: Message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply_text("❌ कृपया अपना Token दर्ज करें!\nExample: `/tokenlogin eyJhbGciOi...`")
         return
         
-    phone = args[1].strip()
-    password = args[2].strip()
+    token = args[1].strip()
+    await message.reply_text("🔄 Token वेरीफाई किया जा रहा है...")
     
-    await message.reply_text("🔄 लॉगिन किया जा रहा है...")
     try:
-        token, auth_user_id = login_with_password(phone, password)
-        user_id = message.from_user.id
-        USER_SESSIONS[user_id] = {"token": token, "auth_user_id": auth_user_id, "phone": phone}
+        session = get_auth_session(token)
+        courses = get_my_courses(session)
         
-        msg = f"🎉 **Login Successful!**\n\n"
-        msg += f"🆔 **User ID:** `{auth_user_id}`\n"
-        msg += f"🔑 **Auth Token:**\n`{token}`"
+        user_id = message.from_user.id
+        USER_SESSIONS[user_id] = {"token": token, "auth_user_id": ""}
+        
+        msg = f"🎉 **Token Login Successful!**\n\n"
+        msg += f"🔑 **Auth Token:**\n`{token}`\n\n"
+        msg += f"📚 कुल पाए गए कोर्सेस: **{len(courses)}**"
         
         await message.reply_text(msg, reply_markup=get_main_menu())
     except Exception as e:
-        await message.reply_text(f"❌ Login Failed: {str(e)}")
+        await message.reply_text(f"❌ Invalid Token Error: {str(e)}")
 
 if __name__ == "__main__":
     app.run()
