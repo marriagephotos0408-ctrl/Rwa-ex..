@@ -23,7 +23,6 @@ def send_otp(phone: str) -> bool:
     clean_phone = phone[-10:]
     session = get_tls_session()
     
-    # Primary POST Attempt
     try:
         response = session.post(f"{BASE_URL}/post/sendotp", json={"phone": clean_phone}, headers=APP_HEADERS, timeout=15)
         if response.status_code == 200:
@@ -31,7 +30,6 @@ def send_otp(phone: str) -> bool:
     except Exception as e:
         logging.error(f"POST sendotp failed: {e}")
 
-    # Fallback GET Attempt
     response = session.get(f"{BASE_URL}/get/sendotp", params={"phone": clean_phone}, headers=APP_HEADERS, timeout=15)
     response.raise_for_status()
     
@@ -58,39 +56,32 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     response = session.get(url, params=params, headers=APP_HEADERS, timeout=15)
     response.raise_for_status()
     
-    # Safe JSON parsing
     try:
         data = response.json()
     except Exception:
         data = json.loads(response.text)
         
-    # Check if data is string or dict
     if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except Exception:
-            data = {"token": data}
+        data = json.loads(data)
 
-    user_data = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+    # Exact extraction from 'user' object
+    user_obj = data.get("user", {}) if isinstance(data, dict) else {}
+    data_obj = data.get("data", {}) if isinstance(data, dict) and isinstance(data.get("data"), dict) else {}
     
     token = ""
     user_id = ""
 
-    if isinstance(user_data, dict):
-        token = (
-            user_data.get("token") or 
-            user_data.get("authorisation") or 
-            user_data.get("jwt") or 
-            data.get("token") or ""
-        )
-        user_id = str(
-            user_data.get("userid") or 
-            user_data.get("id") or 
-            user_data.get("user_id") or 
-            data.get("userid") or ""
-        )
-    elif isinstance(user_data, str):
-        token = user_data
+    if isinstance(user_obj, dict):
+        token = user_obj.get("token") or user_obj.get("authorisation") or user_obj.get("jwt") or ""
+        user_id = str(user_obj.get("userid") or user_obj.get("id") or "")
+
+    if not token and isinstance(data_obj, dict):
+        token = data_obj.get("token") or data_obj.get("authorisation") or ""
+        user_id = user_id or str(data_obj.get("userid") or data_obj.get("id") or "")
+
+    if not token and isinstance(data, dict):
+        token = data.get("token") or ""
+        user_id = user_id or str(data.get("userid") or "")
 
     if not token:
         raise ValueError("Token missing in API response: " + str(response.text))
