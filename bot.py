@@ -5,7 +5,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 
 from keep_alive import keep_alive
 from core.teachx_auth import send_otp, verify_otp_and_login
-from core.teachx import get_auth_session, get_my_courses
+from core.teachx import get_auth_session, get_my_courses, get_user_profile
 
 keep_alive()
 
@@ -28,7 +28,7 @@ def get_login_choice_menu():
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📚 My Courses", callback_data="btn_courses")],
-        [InlineKeyboardButton("🔑 Show My Token", callback_data="btn_show_token")],
+        [InlineKeyboardButton("👤 Profile / Token Info", callback_data="btn_show_token")],
         [InlineKeyboardButton("ℹ️ Help / Commands", callback_data="btn_help")]
     ])
 
@@ -57,8 +57,9 @@ async def callback_handler(client: Client, query: CallbackQuery):
         await query.answer()
         await query.message.reply_text(
             "🎫 **Token Login Selected**\n\n"
-            "लॉगिन करने के लिए अपना Token भेजें:\n"
-            "`/tokenlogin YOUR_AUTH_TOKEN`"
+            "लॉगिन करने के लिए अपना Token और User ID भेजें:\n"
+            "`/tokenlogin YOUR_AUTH_TOKEN 23XXXX`\n\n"
+            "*(अगर User ID नहीं है, तो सिर्फ Token भेजें)*"
         )
 
     elif query.data == "btn_courses":
@@ -77,11 +78,11 @@ async def callback_handler(client: Client, query: CallbackQuery):
             await query.message.reply_text("❌ कोई Courses नहीं मिले।", reply_markup=get_main_menu())
             return
             
-        text = "📚 **Your Courses:**\n\n"
+        text = f"📚 **Your Courses ({len(courses)}):**\n\n"
         for idx, c in enumerate(courses, 1):
             c_name = c.get('course_name') or c.get('title') or c.get('name') or 'Course'
             c_id = c.get('id') or c.get('course_id')
-            text += f"{idx}. **{c_name}** (ID: `{c_id}`)\n"
+            text += f"{idx}. **{c_name}**\n🆔 ID: `{c_id}`\n\n"
             
         await query.message.reply_text(text, reply_markup=get_main_menu())
 
@@ -93,10 +94,16 @@ async def callback_handler(client: Client, query: CallbackQuery):
         await query.answer()
         token = session_data["token"]
         auth_id = session_data.get("auth_user_id", "N/A")
-        await query.message.reply_text(
-            f"🆔 **User ID:** `{auth_id}`\n🔑 **Token:**\n`{token}`", 
-            reply_markup=get_main_menu()
-        )
+        name = session_data.get("name", "N/A")
+        email = session_data.get("email", "N/A")
+        
+        msg = f"👤 **User Details:**\n"
+        msg += f"• **Name:** {name}\n"
+        msg += f"• **Contact/Email:** {email}\n"
+        msg += f"• **User ID:** `{auth_id}`\n\n"
+        msg += f"🔑 **Auth Token:**\n`{token}`"
+        
+        await query.message.reply_text(msg, reply_markup=get_main_menu())
 
     elif query.data == "btn_help":
         await query.answer()
@@ -105,7 +112,7 @@ async def callback_handler(client: Client, query: CallbackQuery):
             "• `/start` - लॉगिन बटन देखने के लिए\n"
             "• `/login <phone>` - OTP भेजने के लिए\n"
             "• `/verify <otp>` - OTP वेरीफाई करने के लिए\n"
-            "• `/tokenlogin <token>` - टोकन से डायरेक्ट लॉगिन",
+            "• `/tokenlogin <token> [userid]` - टोकन से लॉगिन करने के लिए",
             reply_markup=get_main_menu()
         )
 
@@ -145,11 +152,20 @@ async def verify_cmd(client: Client, message: Message):
     
     try:
         token, auth_user_id = verify_otp_and_login(phone, otp)
-        USER_SESSIONS[user_id]["token"] = token
-        USER_SESSIONS[user_id]["auth_user_id"] = auth_user_id
+        
+        session = get_auth_session(token)
+        profile = get_user_profile(session, auth_user_id)
+        
+        USER_SESSIONS[user_id] = {
+            "token": token, 
+            "auth_user_id": auth_user_id or profile["id"],
+            "name": profile["name"],
+            "email": profile["email"]
+        }
         
         msg = f"🎉 **Login Successful!**\n\n"
-        msg += f"🆔 **User ID:** `{auth_user_id}`\n"
+        msg += f"👤 **Name:** {profile['name']}\n"
+        msg += f"🆔 **User ID:** `{auth_user_id or profile['id']}`\n\n"
         msg += f"🔑 **Auth Token:**\n`{token}`"
         
         await message.reply_text(msg, reply_markup=get_main_menu())
@@ -158,24 +174,36 @@ async def verify_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("tokenlogin"))
 async def tokenlogin_cmd(client: Client, message: Message):
-    args = message.text.split(maxsplit=1)
+    args = message.text.split()
     if len(args) < 2:
-        await message.reply_text("❌ कृपया अपना Token दर्ज करें!\nExample: `/tokenlogin eyJhbGciOi...`")
+        await message.reply_text("❌ कृपया अपना Token दर्ज करें!\nExample: `/tokenlogin YOUR_TOKEN` या `/tokenlogin YOUR_TOKEN 23XXXX`")
         return
         
     token = args[1].strip()
-    await message.reply_text("🔄 Token वेरीफाई किया जा रहा है...")
+    provided_user_id = args[2].strip() if len(args) > 2 else ""
+    
+    await message.reply_text("🔄 Token और User Details फैच की जा रही हैं...")
     
     try:
         session = get_auth_session(token)
-        courses = get_my_courses(session)
+        
+        profile = get_user_profile(session, provided_user_id)
+        courses = get_my_courses(session, profile["id"] or provided_user_id)
         
         user_id = message.from_user.id
-        USER_SESSIONS[user_id] = {"token": token, "auth_user_id": ""}
+        USER_SESSIONS[user_id] = {
+            "token": token, 
+            "auth_user_id": profile["id"] or provided_user_id,
+            "name": profile["name"],
+            "email": profile["email"]
+        }
         
-        msg = f"🎉 **Token Login Successful!**\n\n"
-        msg += f"🔑 **Auth Token:**\n`{token}`\n\n"
-        msg += f"📚 कुल पाए गए कोर्सेस: **{len(courses)}**"
+        msg = f"🎉 **Token Verified Successfully!**\n\n"
+        msg += f"👤 **Name:** {profile['name']}\n"
+        msg += f"📧 **Email/Phone:** {profile['email']}\n"
+        msg += f"🆔 **User ID:** `{profile['id'] or provided_user_id}`\n\n"
+        msg += f"📚 **कुल पाए गए कोर्सेस:** {len(courses)}\n\n"
+        msg += f"🔑 **Auth Token:**\n`{token}`"
         
         await message.reply_text(msg, reply_markup=get_main_menu())
     except Exception as e:
