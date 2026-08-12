@@ -17,7 +17,6 @@ app = Client("teachx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN
 
 USER_SESSIONS = {}
 
-# 1. स्टार्ट करने पर दिखने वाला लॉगिन चॉइस मेनू
 def get_login_choice_menu():
     return InlineKeyboardMarkup([
         [
@@ -26,7 +25,6 @@ def get_login_choice_menu():
         ]
     ])
 
-# 2. लॉगिन होने के बाद दिखने वाला मेनू
 def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📚 My Courses", callback_data="btn_courses")],
@@ -34,7 +32,6 @@ def get_main_menu():
         [InlineKeyboardButton("ℹ️ Help / Commands", callback_data="btn_help")]
     ])
 
-# /start कमांड
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     await message.reply_text(
@@ -43,13 +40,11 @@ async def start_cmd(client: Client, message: Message):
         reply_markup=get_login_choice_menu()
     )
 
-# Inline Callback Buttons Handler
 @app.on_callback_query()
 async def callback_handler(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
     session_data = USER_SESSIONS.get(user_id)
     
-    # ------------------ लॉगिन चॉइस बटन्स ------------------
     if query.data == "choice_otp":
         await query.answer()
         await query.message.reply_text(
@@ -63,10 +58,9 @@ async def callback_handler(client: Client, query: CallbackQuery):
         await query.message.reply_text(
             "🔑 **Password Login Selected**\n\n"
             "लॉगिन करने के लिए अपना Number और Password भेजें:\n"
-            "`/passlogin 91XXXXXXXXXX your_password`"
+            "`/passlogin 8569965583 password123`"
         )
 
-    # ------------------ मुख्य मेनू बटन्स ------------------
     elif query.data == "btn_courses":
         if not session_data or "token" not in session_data:
             await query.answer("❌ कृपया पहले लॉगिन करें!", show_alert=True)
@@ -111,11 +105,10 @@ async def callback_handler(client: Client, query: CallbackQuery):
             "• `/start` - लॉगिन ऑप्शन देखने के लिए\n"
             "• `/login <phone>` - OTP भेजने के लिए\n"
             "• `/verify <otp>` - OTP वेरीफाई करने के लिए\n"
-            "• `/passlogin <phone> <password>` - सीधे पासवर्ड से लॉगिन",
+            "• `/passlogin <phone> <password>` - पासवर्ड से लॉगिन करने के लिए",
             reply_markup=get_main_menu()
         )
 
-# OTP Login command
 @app.on_message(filters.command("login"))
 async def login_cmd(client: Client, message: Message):
     args = message.text.split()
@@ -135,7 +128,6 @@ async def login_cmd(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"❌ OTP Error: {str(e)}")
 
-# Verify OTP command
 @app.on_message(filters.command("verify"))
 async def verify_cmd(client: Client, message: Message):
     user_id = message.from_user.id
@@ -164,12 +156,11 @@ async def verify_cmd(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"❌ Login Failed: {str(e)}")
 
-# Password Login command
 @app.on_message(filters.command("passlogin"))
 async def passlogin_cmd(client: Client, message: Message):
     args = message.text.split()
     if len(args) < 3:
-        await message.reply_text("❌ नंबर और पासवर्ड दर्ज करें!\nExample: `/passlogin 9876543210 mypassword`")
+        await message.reply_text("❌ नंबर और पासवर्ड दोनों दर्ज करें!\nExample: `/passlogin 9876543210 mypassword`")
         return
         
     phone = args[1].strip()
