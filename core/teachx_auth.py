@@ -1,3 +1,4 @@
+# core/teachx_auth.py
 import json
 import logging
 from curl_cffi import requests as cffi_requests
@@ -32,12 +33,10 @@ def send_otp(phone: str) -> bool:
     try:
         response = session.get(f"{BASE_URL}/get/sendotp", params={"phone": clean_phone}, headers=APP_HEADERS, timeout=15)
         response.raise_for_status()
-        
         try:
             data = response.json()
         except Exception:
             data = {}
-            
         return bool(data.get("status") or data.get("success") or True)
     except Exception as e:
         logging.error(f"GET sendotp failed: {e}")
@@ -91,28 +90,38 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     return token, user_id
 
 def login_with_password(phone_or_email: str, password: str) -> tuple[str, str]:
-    """
-    User/Password Login Functionality
-    """
-    clean_phone = phone_or_email.strip()[-10:] if phone_or_email.strip().isdigit() else phone_or_email.strip()
+    clean_input = phone_or_email.strip()
+    
+    if clean_input.isdigit() and len(clean_input) == 10:
+        phone_payload = f"91{clean_input}"
+    else:
+        phone_payload = clean_input
+
     session = get_tls_session()
     
-    headers = APP_HEADERS.copy()
-    headers["Content-Type"] = "application/x-www-form-urlencoded"
-    
-    # Check user existence optional step
     try:
-        session.get(f"{BASE_URL}/get/check_user_exist", params={"email_or_phone": clean_phone}, headers=APP_HEADERS, timeout=15)
+        session.get(
+            f"{BASE_URL}/get/check_user_exist", 
+            params={"email_or_phone": phone_payload}, 
+            headers=APP_HEADERS, 
+            timeout=15
+        )
     except Exception:
         pass
 
     login_url = f"{BASE_URL}/post/userLogin?extra_details=0"
     payload = {
-        "email_or_phone": clean_phone,
+        "email_or_phone": phone_payload,
         "password": str(password).strip()
     }
     
-    response = session.post(login_url, data=payload, headers=headers, timeout=15)
+    response = session.post(login_url, json=payload, headers=APP_HEADERS, timeout=15)
+    
+    if response.status_code != 200:
+        if phone_payload.startswith("91") and len(phone_payload) == 12:
+            payload["email_or_phone"] = phone_payload[2:]
+            response = session.post(login_url, json=payload, headers=APP_HEADERS, timeout=15)
+
     if response.status_code != 200:
         raise ValueError(f"HTTP Error {response.status_code}")
         
@@ -130,7 +139,7 @@ def login_with_password(phone_or_email: str, password: str) -> tuple[str, str]:
         user_id = str(res_data.get("userid") or res_data.get("id") or res_data.get("user_id") or "")
 
     if not token:
-        err_msg = data.get("message") if isinstance(data, dict) else "Login Failed"
+        err_msg = data.get("message") if isinstance(data, dict) else "Invalid Phone or Password"
         raise ValueError(err_msg)
         
     return token, user_id
