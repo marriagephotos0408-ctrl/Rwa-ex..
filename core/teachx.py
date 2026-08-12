@@ -1,4 +1,3 @@
-# core/teachx.py
 import logging
 from curl_cffi import requests as cffi_requests
 
@@ -7,7 +6,6 @@ BASE_URL = "https://rozgarapinew.teachx.in"
 def get_auth_session(token: str):
     session = cffi_requests.Session(impersonate="chrome110")
     
-    # Cleaning token formatting
     clean_token = token.strip().strip('"').strip("'")
     if not clean_token.startswith("Bearer "):
         bearer_token = f"Bearer {clean_token}"
@@ -35,29 +33,50 @@ def get_auth_session(token: str):
 
 def get_my_courses(session, user_id: str):
     url = f"{BASE_URL}/get/mycourseweb"
-    params = {"userid": str(user_id)}
-    
-    response = session.get(url, params=params, timeout=15)
-    
-    # Retry without params if status is not 200 (Some versions pass user_id in headers)
-    if response.status_code != 200:
-        response = session.get(url, timeout=15)
-
-    response.raise_for_status()
+    params = {"userid": str(user_id)} if user_id else {}
     
     try:
+        response = session.get(url, params=params, timeout=15)
+        
+        # अगर 200 नहीं आता तो बिना params के ट्राई करें
+        if response.status_code != 200:
+            response = session.get(url, timeout=15)
+
+        if response.status_code != 200:
+            logging.error(f"Courses Fetch Failed: HTTP {response.status_code}")
+            return []
+
         data = response.json()
-    except Exception:
-        logging.error("Failed to parse response JSON: " + response.text)
+        courses = []
+
+        if isinstance(data, list):
+            courses = data
+        elif isinstance(data, dict):
+            courses = data.get("data") or data.get("courses") or data.get("user_courses") or []
+            if isinstance(courses, dict):
+                courses = courses.get("courses") or courses.get("list") or []
+
+        return courses if isinstance(courses, list) else []
+
+    except Exception as e:
+        logging.error(f"Error in get_my_courses: {str(e)}")
         return []
 
-    # Extracting courses list dynamically
-    courses = []
-    if isinstance(data, list):
-        courses = data
-    elif isinstance(data, dict):
-        courses = data.get("data") or data.get("courses") or data.get("user_courses") or []
-        if isinstance(courses, dict):
-            courses = courses.get("courses") or courses.get("list") or []
+def get_course_details_by_id(session, course_id: str):
+    """किसी विशिष्ट कोर्स का डेटा खींचने के लिए (https://rozgarapinew.teachx.in/get/course_by_id?id=571)"""
+    url = f"{BASE_URL}/get/course_by_id"
+    params = {"id": str(course_id)}
+    
+    try:
+        response = session.get(url, params=params, timeout=15)
+        if response.status_code != 200:
+            logging.error(f"Course Details Failed: HTTP {response.status_code}")
+            return None
 
-    return courses if isinstance(courses, list) else []
+        data = response.json()
+        if isinstance(data, dict):
+            return data.get("data") or data
+        return None
+    except Exception as e:
+        logging.error(f"Error in get_course_details_by_id: {str(e)}")
+        return None
