@@ -91,19 +91,30 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
 
 def login_with_password(phone_or_email: str, password: str) -> tuple[str, str]:
     clean_input = phone_or_email.strip()
-    
-    if clean_input.isdigit() and len(clean_input) == 10:
-        phone_payload = f"91{clean_input}"
+    if clean_input.isdigit() and len(clean_input) > 10:
+        clean_phone = clean_input[-10:]
     else:
-        phone_payload = clean_input
+        clean_phone = clean_input
 
     session = get_tls_session()
     
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://rojgarwithankit.co.in",
+        "Referer": "https://rojgarwithankit.co.in/",
+        "Client-Service": "Appx",
+        "Auth-Key": "appxapi",
+        "app-token": "appxapi",
+        "Host": "rozgarapinew.teachx.in"
+    }
+
     try:
         session.get(
             f"{BASE_URL}/get/check_user_exist", 
-            params={"email_or_phone": phone_payload}, 
-            headers=APP_HEADERS, 
+            params={"email_or_phone": clean_phone}, 
+            headers=headers, 
             timeout=15
         )
     except Exception:
@@ -111,16 +122,15 @@ def login_with_password(phone_or_email: str, password: str) -> tuple[str, str]:
 
     login_url = f"{BASE_URL}/post/userLogin?extra_details=0"
     payload = {
-        "email_or_phone": phone_payload,
+        "email_or_phone": clean_phone,
         "password": str(password).strip()
     }
     
-    response = session.post(login_url, json=payload, headers=APP_HEADERS, timeout=15)
+    response = session.post(login_url, data=payload, headers=headers, timeout=15)
     
-    if response.status_code != 200:
-        if phone_payload.startswith("91") and len(phone_payload) == 12:
-            payload["email_or_phone"] = phone_payload[2:]
-            response = session.post(login_url, json=payload, headers=APP_HEADERS, timeout=15)
+    if response.status_code != 200 and clean_phone.isdigit() and len(clean_phone) == 10:
+        payload["email_or_phone"] = f"91{clean_phone}"
+        response = session.post(login_url, data=payload, headers=headers, timeout=15)
 
     if response.status_code != 200:
         raise ValueError(f"HTTP Error {response.status_code}")
@@ -138,8 +148,12 @@ def login_with_password(phone_or_email: str, password: str) -> tuple[str, str]:
         token = res_data.get("token") or res_data.get("authorisation") or res_data.get("authorization") or ""
         user_id = str(res_data.get("userid") or res_data.get("id") or res_data.get("user_id") or "")
 
+    if not token and isinstance(data, dict):
+        token = data.get("token") or data.get("authorisation") or ""
+        user_id = user_id or str(data.get("userid") or data.get("id") or "")
+
     if not token:
-        err_msg = data.get("message") if isinstance(data, dict) else "Invalid Phone or Password"
+        err_msg = data.get("message") if isinstance(data, dict) and data.get("message") else "Invalid Credentials"
         raise ValueError(err_msg)
         
     return token, user_id
