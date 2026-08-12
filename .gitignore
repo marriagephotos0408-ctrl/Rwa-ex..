@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.env
+*.tmp.mp4
+TeachX_Downloads/
+cookies.json
+.vscode/
