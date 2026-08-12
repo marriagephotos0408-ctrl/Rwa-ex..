@@ -32,7 +32,7 @@ def get_auth_session(token: str):
     session.headers.update(headers)
     return session
 
-def get_my_courses(session, user_id: str):
+def get_my_courses(session, user_id: str = ""):
     url = f"{BASE_URL}/get/mycourseweb"
     params = {"userid": str(user_id)} if user_id else {}
     
