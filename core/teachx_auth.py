@@ -40,24 +40,23 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     clean_phone = phone[-10:]
     session = get_tls_session()
     
-    # 1. Try GET /get/verifyotp (Standard AppX Route)
-    get_url = f"{BASE_URL}/get/verifyotp"
-    params = {"phone": clean_phone, "otp": str(otp)}
+    # Exact teachx OTP verify endpoint
+    url = f"{BASE_URL}/get/otpverify"
+    params = {
+        "useremail": clean_phone,
+        "otp": str(otp),
+        "device_id": "WebBrowser1786518083748609u6euajjg",
+        "mydeviceid": "",
+        "mydeviceid2": ""
+    }
     
-    response = session.get(get_url, params=params, headers=APP_HEADERS, timeout=15)
-    
-    # 2. Fallback to POST /post/verifyotp if GET fails with 404
-    if response.status_code == 404:
-        post_url = f"{BASE_URL}/post/verifyotp"
-        payload = {"phone": clean_phone, "otp": str(otp)}
-        response = session.post(post_url, json=payload, headers=APP_HEADERS, timeout=15)
-        
+    response = session.get(url, params=params, headers=APP_HEADERS, timeout=15)
     response.raise_for_status()
     data = response.json()
     
     user_data = data.get("data", data)
     
-    # Extract token from various key formats
+    # Extract Token dynamically
     token = (
         user_data.get("token") or 
         user_data.get("authorisation") or 
@@ -65,7 +64,7 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
         data.get("token") or ""
     )
     
-    # Extract user_id
+    # Extract User ID dynamically
     user_id = str(
         user_data.get("userid") or 
         user_data.get("id") or 
@@ -74,6 +73,6 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     )
     
     if not token:
-        raise ValueError("Token missing in response! Output: " + str(data))
+        raise ValueError("Token missing in response! API Output: " + str(data))
         
     return token, user_id
