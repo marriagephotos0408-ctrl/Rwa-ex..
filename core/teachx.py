@@ -1,3 +1,4 @@
+# core/teachx.py
 import logging
 from curl_cffi import requests as cffi_requests
 
@@ -38,7 +39,6 @@ def get_my_courses(session, user_id: str):
     try:
         response = session.get(url, params=params, timeout=15)
         
-        # अगर 200 नहीं आता तो बिना params के ट्राई करें
         if response.status_code != 200:
             response = session.get(url, timeout=15)
 
@@ -61,22 +61,3 @@ def get_my_courses(session, user_id: str):
     except Exception as e:
         logging.error(f"Error in get_my_courses: {str(e)}")
         return []
-
-def get_course_details_by_id(session, course_id: str):
-    """किसी विशिष्ट कोर्स का डेटा खींचने के लिए (https://rozgarapinew.teachx.in/get/course_by_id?id=571)"""
-    url = f"{BASE_URL}/get/course_by_id"
-    params = {"id": str(course_id)}
-    
-    try:
-        response = session.get(url, params=params, timeout=15)
-        if response.status_code != 200:
-            logging.error(f"Course Details Failed: HTTP {response.status_code}")
-            return None
-
-        data = response.json()
-        if isinstance(data, dict):
-            return data.get("data") or data
-        return None
-    except Exception as e:
-        logging.error(f"Error in get_course_details_by_id: {str(e)}")
-        return None
