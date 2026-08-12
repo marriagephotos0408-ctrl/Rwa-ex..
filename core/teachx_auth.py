@@ -4,7 +4,6 @@ from curl_cffi import requests as cffi_requests
 
 BASE_URL = "https://rozgarapinew.teachx.in"
 
-# Full Android AppX Spoof Headers
 APP_HEADERS = {
     "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; M2010J19CI Build/RP1A.200720.011)",
     "Accept": "application/json, text/plain, */*",
@@ -17,31 +16,23 @@ APP_HEADERS = {
 }
 
 def get_tls_session():
-    """Creates a TLS Impersonated session to bypass Cloudflare WAF on Cloud Servers."""
     return cffi_requests.Session(impersonate="chrome110")
 
 def send_otp(phone: str) -> bool:
-    clean_phone = phone[-10:]  # Pure 10-digit clean phone
+    clean_phone = phone[-10:]
     session = get_tls_session()
     
-    # 1. Try Primary POST Endpoint
-    post_url = f"{BASE_URL}/post/sendotp"
-    payload = {"phone": clean_phone}
-    
+    # Primary POST Attempt
     try:
-        response = session.post(post_url, json=payload, headers=APP_HEADERS, timeout=15)
+        response = session.post(f"{BASE_URL}/post/sendotp", json={"phone": clean_phone}, headers=APP_HEADERS, timeout=15)
         if response.status_code == 200:
             return True
     except Exception as e:
         logging.error(f"POST sendotp failed: {e}")
 
-    # 2. Fallback GET Endpoint with Query Params
-    get_url = f"{BASE_URL}/get/sendotp"
-    params = {"phone": clean_phone}
-    
-    response = session.get(get_url, params=params, headers=APP_HEADERS, timeout=15)
+    # Fallback GET Attempt
+    response = session.get(f"{BASE_URL}/get/sendotp", params={"phone": clean_phone}, headers=APP_HEADERS, timeout=15)
     response.raise_for_status()
-    
     data = response.json()
     return bool(data.get("status") or data.get("success") or True)
 
@@ -49,19 +40,24 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     clean_phone = phone[-10:]
     session = get_tls_session()
     
-    url = f"{BASE_URL}/post/verifyotp"
-    payload = {"phone": clean_phone, "otp": otp}
+    # 1. Try GET /get/verifyotp (Standard AppX Route)
+    get_url = f"{BASE_URL}/get/verifyotp"
+    params = {"phone": clean_phone, "otp": str(otp)}
     
-    response = session.post(url, json=payload, headers=APP_HEADERS, timeout=15)
-    if response.status_code != 200:
-        response = session.get(f"{BASE_URL}/get/verifyotp", params={"phone": clean_phone, "otp": otp}, headers=APP_HEADERS, timeout=15)
+    response = session.get(get_url, params=params, headers=APP_HEADERS, timeout=15)
+    
+    # 2. Fallback to POST /post/verifyotp if GET fails with 404
+    if response.status_code == 404:
+        post_url = f"{BASE_URL}/post/verifyotp"
+        payload = {"phone": clean_phone, "otp": str(otp)}
+        response = session.post(post_url, json=payload, headers=APP_HEADERS, timeout=15)
         
     response.raise_for_status()
     data = response.json()
     
     user_data = data.get("data", data)
     
-    # Dynamic Token Extraction
+    # Extract token from various key formats
     token = (
         user_data.get("token") or 
         user_data.get("authorisation") or 
@@ -69,7 +65,7 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
         data.get("token") or ""
     )
     
-    # Dynamic User ID Extraction
+    # Extract user_id
     user_id = str(
         user_data.get("userid") or 
         user_data.get("id") or 
@@ -78,6 +74,6 @@ def verify_otp_and_login(phone: str, otp: str) -> tuple[str, str]:
     )
     
     if not token:
-        raise ValueError("Token missing in response! Response: " + str(data))
+        raise ValueError("Token missing in response! Output: " + str(data))
         
     return token, user_id
