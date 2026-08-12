@@ -1,23 +1,24 @@
 # bot.py
 import os
-import requests
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from keep_alive import keep_alive
 from core.teachx_auth import send_otp, verify_otp_and_login
-from core.teachx import get_my_courses
+from core.teachx import get_auth_session, get_my_courses
 from core.utils import safe_filename
 
-# Start Flask Web Server for 24/7 Uptime
+# Start Flask Web Server for 24/7 Uptime (UptimeRobot ping support)
 keep_alive()
 
+# Environment Variables
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 app = Client("teachx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+# User Sessions Data Store
 USER_SESSIONS = {}
 
 @app.on_message(filters.command("start"))
@@ -76,14 +77,17 @@ async def courses_cmd(client: Client, message: Message):
     session_data = USER_SESSIONS.get(user_id)
     
     if not session_data or "token" not in session_data:
-        await message.reply_text("❌ पहले Login करें!")
+        await message.reply_text("❌ पहले `/login` करके Verify करें!")
         return
         
-    s = requests.Session()
-    s.headers.update({"Authorization": f"Bearer {session_data['token']}"})
+    token = session_data["token"]
+    auth_user_id = session_data["auth_user_id"]
+    
+    # Authenticated TLS Impersonate Session
+    session = get_auth_session(token)
     
     try:
-        courses = get_my_courses(s, session_data["auth_user_id"])
+        courses = get_my_courses(session, auth_user_id)
         if not courses:
             await message.reply_text("❌ कोई Courses नहीं मिले।")
             return
