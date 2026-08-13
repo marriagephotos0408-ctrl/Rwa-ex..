@@ -1,28 +1,23 @@
-# config.py
 import os
 
-API_ID = int(os.environ.get("API_ID", "0"))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+API_ID = int(os.getenv("API_ID", "12345678"))
+API_HASH = os.getenv("API_HASH", "your_api_hash_here")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your_bot_token_here")
 
 BASE_URL = "https://rozgarapinew.teachx.in"
 
 ENDPOINTS = {
-    "send_otp": "/get/sendotp",
-    "verify_otp": "/get/otpverify",
+    "send_otp": "/get/otp", # आवश्यकतानुसार सही एंडपॉइंट अपडेट करें
+    "verify_otp": "/get/verify_otp",
     "exams_list": "/get/examslist",
-    "liked_items": "/get/get_user_liked_items",
-    "sub_topics": "/get/youtubeclasstopicapi",
-    "classes": "/get/youtubeclassbyexamsubtopconceptapiv2"
+    "sub_topics": "/get/youtubeclassstudyapi",
+    "classes": "/get/youtubeclassbyexamsubtopconceptapiv2",
+    "telegram": "/get/telegram"
 }
 
 DEFAULT_HEADERS = {
-    "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; M2010J19CI Build/RP1A.200720.011)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Origin": "https://rojgarwithankit.co.in",
-    "Referer": "https://rojgarwithankit.co.in/",
-    "Client-Service": "Appx",
-    "Auth-Key": "appxapi",
-    "app-token": "appxapi",
-    "Host": "rozgarapinew.teachx.in"
+    "Referer": "https://rojgarwithankit.co.in/"
 }
