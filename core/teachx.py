@@ -30,7 +30,6 @@ def get_auth_session(token: str = ""):
     return session
 
 def auto_extract_keys(item: dict) -> dict:
-    """JSON ऑब्जेक्ट में से ID, Title, Video और PDF की Keys अपने आप ढूँढने वाला Smart Parser"""
     if not isinstance(item, dict):
         return {"id": "", "title": str(item), "video": "", "pdf": ""}
 
@@ -49,7 +48,6 @@ def auto_extract_keys(item: dict) -> dict:
     return {"id": item_id, "title": title, "video": video, "pdf": pdf}
 
 def fetch_dynamic_api(session, endpoint: str, params: dict = None):
-    """किसी भी API EndPoint से डेटा फ़ैच करके लिस्ट रिटर्न करना"""
     url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
     try:
         res = session.get(url, params=params, timeout=15)
@@ -67,7 +65,6 @@ def fetch_dynamic_api(session, endpoint: str, params: dict = None):
     return []
 
 def extract_recursive_txt(session, initial_data: list, exam_id: str) -> tuple:
-    """पूरे कोर्स के डेटा को स्कैन करके TXT फ़ाइल बनाना"""
     txt = f"==================================================\n"
     txt += f"      AUTOMATIC DYNAMIC EXTRACTOR (EXAM ID: {exam_id})\n"
     txt += f"==================================================\n\n"
