@@ -6,6 +6,8 @@ from curl_cffi import requests as cffi_requests
 
 BASE_URL = "https://rozgarapinew.teachx.in"
 
+logging.basicConfig(level=logging.INFO)
+
 def get_auth_session(token: str = ""):
     session = cffi_requests.Session(impersonate="chrome110")
     headers = {
@@ -27,113 +29,82 @@ def get_auth_session(token: str = ""):
     session.headers.update(headers)
     return session
 
-def get_subjects_by_exam(session, exam_id: str):
-    """1. Exam ID से सारे Subjects की लिस्ट निकालना"""
-    url = f"{BASE_URL}/get/youtubeclasstopicapi"
-    params = {"examid": str(exam_id), "subjectid": "0", "start": "-1"}
+def auto_extract_keys(item: dict) -> dict:
+    """JSON ऑब्जेक्ट में से ID, Title, Video और PDF की Keys अपने आप ढूँढने वाला Smart Parser"""
+    if not isinstance(item, dict):
+        return {"id": "", "title": str(item), "video": "", "pdf": ""}
+
+    title_keys = ["name", "title", "topic_name", "subject_name", "exam_name", "course_name", "chapter_name"]
+    title = next((str(item[k]) for k in title_keys if k in item and item[k]), "Item")
+
+    id_keys = ["id", "examid", "subjectid", "topicid", "course_id", "exam_id", "subject_id"]
+    item_id = next((str(item[k]) for k in id_keys if k in item and item[k]), "")
+
+    video_keys = ["url", "youtube_url", "link", "video_url", "stream_url", "embed_url"]
+    video = next((str(item[k]) for k in video_keys if k in item and item[k]), "")
+
+    pdf_keys = ["pdf_url", "pdf", "attachment", "notes", "notes_url", "file", "download_url"]
+    pdf = next((str(item[k]) for k in pdf_keys if k in item and item[k]), "")
+
+    return {"id": item_id, "title": title, "video": video, "pdf": pdf}
+
+def fetch_dynamic_api(session, endpoint: str, params: dict = None):
+    """किसी भी API EndPoint से डेटा फ़ैच करके लिस्ट रिटर्न करना"""
+    url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
     try:
         res = session.get(url, params=params, timeout=15)
         if res.status_code == 200:
             data = res.json()
             if isinstance(data, list):
                 return data
-            return data.get("data") or data.get("subjects") or []
+            elif isinstance(data, dict):
+                for key in ["data", "list", "topics", "subjects", "classes", "exams", "courses"]:
+                    if key in data and isinstance(data[key], list):
+                        return data[key]
+                return [data]
     except Exception as e:
-        logging.error(f"Error fetching subjects: {e}")
+        logging.error(f"Dynamic API Fetch Error ({endpoint}): {e}")
     return []
 
-def get_topics_by_subject(session, exam_id: str, subject_id: str):
-    """2. Subject ID से उसके अंदर के सारे Topics की लिस्ट निकालना"""
-    url = f"{BASE_URL}/get/youtubeclasstopicapi"
-    params = {"examid": str(exam_id), "subjectid": str(subject_id), "start": "-1"}
-    try:
-        res = session.get(url, params=params, timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            if isinstance(data, list):
-                return data
-            return data.get("data") or data.get("topics") or []
-    except Exception as e:
-        logging.error(f"Error fetching topics: {e}")
-    return []
-
-def get_concept_classes(session, exam_id: str, subject_id: str, topic_id: str, start: str = "0"):
-    """3. Naye API Endpoint se Concept wise Videos aur PDFs fetch karna"""
-    url = f"{BASE_URL}/get/youtubeclassbyexamsubtopconceptapiv2"
-    params = {
-        "examid": str(exam_id),
-        "subjectid": str(subject_id),
-        "topicid": str(topic_id),
-        "start": str(start)
-    }
-    try:
-        res = session.get(url, params=params, timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            if isinstance(data, list):
-                return data
-            return data.get("data") or data.get("classes") or []
-    except Exception as e:
-        logging.error(f"Error fetching concept classes: {e}")
-    return []
-
-def extract_full_exam_txt(session, exam_id: str) -> tuple:
-    """4. Pura Exam auto-crawl karke TXT File banana"""
+def extract_recursive_txt(session, initial_data: list, exam_id: str) -> tuple:
+    """पूरे कोर्स के डेटा को स्कैन करके TXT फ़ाइल बनाना"""
     txt = f"==================================================\n"
-    txt += f"        COURSE CONTENT - EXAM ID: {exam_id}\n"
+    txt += f"      AUTOMATIC DYNAMIC EXTRACTOR (EXAM ID: {exam_id})\n"
     txt += f"==================================================\n\n"
 
-    subjects = get_subjects_by_exam(session, exam_id)
     v_count, p_count = 0, 0
 
-    if not subjects:
-        subjects = [{"id": "0", "name": "General Subject"}]
+    def parse_node(node, depth=0):
+        nonlocal v_count, p_count, txt
+        indent = "  " * depth
 
-    for sub in subjects:
-        sub_id = str(sub.get("id") or sub.get("subjectid") or "0")
-        sub_name = sub.get("name") or sub.get("subject_name") or "Subject"
+        if isinstance(node, list):
+            for child in node:
+                parse_node(child, depth)
+        elif isinstance(node, dict):
+            parsed = auto_extract_keys(node)
+            txt += f"{indent}📌 {parsed['title']} (ID: {parsed['id']})\n"
+            
+            if parsed['video']:
+                txt += f"{indent}   🎥 Video: {parsed['video']}\n"
+                v_count += 1
+            if parsed['pdf']:
+                txt += f"{indent}   📄 PDF: {parsed['pdf']}\n"
+                p_count += 1
+            
+            txt += "\n"
 
-        txt += f"\n==================================================\n"
-        txt += f"📘 SUBJECT: {sub_name} (ID: {sub_id})\n"
-        txt += f"==================================================\n\n"
+            for k, v in node.items():
+                if isinstance(v, (list, dict)):
+                    parse_node(v, depth + 1)
 
-        topics = get_topics_by_subject(session, exam_id, sub_id)
-        if not topics:
-            topics = [{"id": "0", "topic_name": "General Topic"}]
-
-        for top in topics:
-            top_id = str(top.get("id") or top.get("topicid") or "0")
-            top_name = top.get("topic_name") or top.get("title") or "Topic"
-
-            txt += f"  📁 TOPIC: {top_name}\n"
-            txt += f"  ----------------------------------------------\n"
-
-            classes = get_concept_classes(session, exam_id, sub_id, top_id)
-            if classes:
-                for idx, cls in enumerate(classes, 1):
-                    c_title = cls.get("title") or cls.get("topic_name") or f"Lecture {idx}"
-                    v_url = cls.get("url") or cls.get("youtube_url") or cls.get("link") or ""
-                    
-                    # AppX / Static PDF URL Extractor
-                    p_url = (cls.get("pdf_url") or cls.get("pdf") or 
-                             cls.get("attachment") or cls.get("notes_url") or "")
-
-                    txt += f"   {idx}. {c_title}\n"
-                    if v_url:
-                        txt += f"      🎥 Video: {v_url}\n"
-                        v_count += 1
-                    if p_url:
-                        txt += f"      📄 PDF: {p_url}\n"
-                        p_count += 1
-                    txt += "\n"
-            else:
-                txt += "   (No classes found)\n\n"
+    parse_node(initial_data)
 
     txt += f"==================================================\n"
     txt += f"SUMMARY: Total Videos: {v_count} | Total PDFs: {p_count}\n"
     txt += f"==================================================\n"
 
     stream = io.BytesIO(txt.encode('utf-8'))
-    filename = f"Exam_{exam_id}_Full_Course.txt"
+    filename = f"Dynamic_Exam_{exam_id}.txt"
     stream.name = filename
     return stream, filename, v_count, p_count
