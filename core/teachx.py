@@ -1,25 +1,15 @@
 # core/teachx.py
 import io
-import json
+import urllib.parse
 import logging
 from curl_cffi import requests as cffi_requests
-
-BASE_URL = "https://rozgarapinew.teachx.in"
+from config import BASE_URL, ENDPOINTS, DEFAULT_HEADERS
 
 logging.basicConfig(level=logging.INFO)
 
 def get_auth_session(token: str = ""):
     session = cffi_requests.Session(impersonate="chrome110")
-    headers = {
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; M2010J19CI Build/RP1A.200720.011)",
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://rojgarwithankit.co.in",
-        "Referer": "https://rojgarwithankit.co.in/",
-        "Client-Service": "Appx",
-        "Auth-Key": "appxapi",
-        "app-token": "appxapi",
-        "Host": "rozgarapinew.teachx.in"
-    }
+    headers = DEFAULT_HEADERS.copy()
     if token:
         clean_token = token.replace("Bearer ", "").strip().strip('"')
         headers.update({
@@ -28,6 +18,34 @@ def get_auth_session(token: str = ""):
         })
     session.headers.update(headers)
     return session
+
+def send_otp_api(phone: str):
+    session = get_auth_session()
+    url = f"{BASE_URL}{ENDPOINTS['send_otp']}"
+    try:
+        res = session.get(url, params={"phone": phone}, timeout=15)
+        return res.json()
+    except Exception as e:
+        logging.error(f"Send OTP Error: {e}")
+        return None
+
+def verify_otp_api(phone: str, otp: str):
+    session = get_auth_session()
+    url = f"{BASE_URL}{ENDPOINTS['verify_otp']}"
+    device_id = f"WebBrowser{phone}niudjrtwvx"
+    params = {
+        "useremail": phone,
+        "otp": otp,
+        "device_id": device_id,
+        "mydeviceid": "",
+        "mydeviceid2": ""
+    }
+    try:
+        res = session.get(url, params=params, timeout=15)
+        return res.json()
+    except Exception as e:
+        logging.error(f"Verify OTP Error: {e}")
+        return None
 
 def auto_extract_keys(item: dict) -> dict:
     if not isinstance(item, dict):
@@ -45,9 +63,20 @@ def auto_extract_keys(item: dict) -> dict:
     pdf_keys = ["pdf_url", "pdf", "attachment", "notes", "notes_url", "file", "download_url"]
     pdf = next((str(item[k]) for k in pdf_keys if k in item and item[k]), "")
 
+    # Extract Direct PDF from ClassX Viewer URL if present
+    if "pdfjs-latest" in pdf or "file=" in pdf:
+        try:
+            parsed = urllib.parse.urlparse(pdf)
+            queries = urllib.parse.parse_qs(parsed.query)
+            if 'file' in queries:
+                pdf = queries['file'][0]
+        except Exception:
+            pass
+
     return {"id": item_id, "title": title, "video": video, "pdf": pdf}
 
-def fetch_dynamic_api(session, endpoint: str, params: dict = None):
+def fetch_dynamic_api(session, endpoint_key: str, params: dict = None):
+    endpoint = ENDPOINTS.get(endpoint_key, endpoint_key)
     url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
     try:
         res = session.get(url, params=params, timeout=15)
@@ -56,12 +85,12 @@ def fetch_dynamic_api(session, endpoint: str, params: dict = None):
             if isinstance(data, list):
                 return data
             elif isinstance(data, dict):
-                for key in ["data", "list", "topics", "subjects", "classes", "exams", "courses"]:
+                for key in ["data", "list", "topics", "subjects", "classes", "exams", "courses", "result"]:
                     if key in data and isinstance(data[key], list):
                         return data[key]
                 return [data]
     except Exception as e:
-        logging.error(f"Dynamic API Fetch Error ({endpoint}): {e}")
+        logging.error(f"Dynamic API Fetch Error ({endpoint_key}): {e}")
     return []
 
 def extract_recursive_txt(session, initial_data: list, exam_id: str) -> tuple:
