@@ -1,14 +1,11 @@
-# bot.py
 import logging
 import html
-import pyrogram
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from config import API_ID, API_HASH, BOT_TOKEN
 from keep_alive import keep_alive
 from core.teachx import (
-    get_auth_session,
     send_otp_api,
     verify_otp_api,
     fetch_dynamic_api,
@@ -20,7 +17,6 @@ keep_alive()
 
 app = Client("teachx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# In-memory session store
 USER_SESSIONS = {}
 LOGIN_STATE = {}
 
@@ -60,8 +56,8 @@ async def login_cmd(client: Client, message: Message):
     phone = args[1].strip()
     msg = await message.reply_text("⏳ Sending OTP...")
     
-    res = send_otp_api(phone)
-    if res and res.get("status") == "true":
+    res = await send_otp_api(phone)
+    if res and str(res.get("status")).lower() == "true":
         LOGIN_STATE[message.from_user.id] = {"phone": phone}
         await msg.edit_text(f"✅ OTP successfully sent to `{phone}`!\n\nAb likhein: `/otp <YOUR_OTP>`")
     else:
@@ -83,9 +79,9 @@ async def otp_cmd(client: Client, message: Message):
     phone = LOGIN_STATE[user_id]["phone"]
     
     msg = await message.reply_text("⏳ Verifying OTP...")
-    res = verify_otp_api(phone, otp)
+    res = await verify_otp_api(phone, otp)
 
-    if res and res.get("status") == "true":
+    if res and str(res.get("status")).lower() == "true":
         token = res.get("token") or res.get("data", {}).get("token", "")
         USER_SESSIONS[user_id] = token
         del LOGIN_STATE[user_id]
@@ -114,11 +110,10 @@ async def dynamic_get_handler(client: Client, message: Message):
     exam_id = args[1].strip()
     user_id = message.from_user.id
     token = USER_SESSIONS.get(user_id, "")
-    session = get_auth_session(token)
 
     msg = await message.reply_text("🔄 Server se Data Fetch kiya ja raha hai...")
 
-    raw_subjects = fetch_dynamic_api(session, "sub_topics", {"examid": exam_id, "subjectid": "0", "start": "-1"})
+    raw_subjects = await fetch_dynamic_api(token, "sub_topics", {"examid": exam_id, "subjectid": "0", "start": "-1"})
 
     if not raw_subjects:
         await msg.edit_text("❌ Is Exam ID ke liye koi data nahi mila.")
@@ -134,7 +129,7 @@ async def dynamic_get_handler(client: Client, message: Message):
     buttons.append([InlineKeyboardButton("📥 Download Full TXT File", callback_data=f"dyn_dl_{exam_id}")])
 
     await msg.edit_text(
-        f"🎯 **Exam ID:** `{exam_id}`\n\nNiche diye gaye Subjects me se chunen ya TXT download karein:",
+        f"🎯 **Exam ID:** `{exam_id}`\n\nNiche दिए गए Subjects me se chunen ya TXT download karein:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
@@ -143,7 +138,6 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
     data = query.data
     user_id = query.from_user.id
     token = USER_SESSIONS.get(user_id, "")
-    session = get_auth_session(token)
 
     if data == "btn_login_otp":
         await query.answer()
@@ -155,7 +149,7 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
 
     elif data == "btn_free_courses":
         await query.answer("Fetching Courses...")
-        raw_exams = fetch_dynamic_api(session, "exams_list")
+        raw_exams = await fetch_dynamic_api(token, "exams_list")
         if not raw_exams:
             await query.message.reply_text("❌ Data load nahi ho saka.")
             return
@@ -183,7 +177,7 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
         _, _, exam_id, sub_id = data.split("_")
         await query.answer("Topics load ho rahe hain...")
 
-        raw_topics = fetch_dynamic_api(session, "sub_topics", {"examid": exam_id, "subjectid": sub_id, "start": "-1"})
+        raw_topics = await fetch_dynamic_api(token, "sub_topics", {"examid": exam_id, "subjectid": sub_id, "start": "-1"})
 
         buttons = []
         for item in raw_topics[:12]:
@@ -198,7 +192,7 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
         _, _, exam_id, sub_id, top_id = data.split("_")
         await query.answer("Classes Extract ho rahi hain...")
 
-        raw_classes = fetch_dynamic_api(session, "classes", {
+        raw_classes = await fetch_dynamic_api(token, "classes", {
             "examid": exam_id, "subjectid": sub_id, "topicid": top_id, "start": "0"
         })
 
@@ -233,9 +227,9 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
         await query.answer()
         status = await query.message.reply_text("⏳ Server Structure scan ho raha hai, prateeksha karein...")
 
-        all_data = fetch_dynamic_api(session, "sub_topics", {"examid": exam_id, "subjectid": "0", "start": "-1"})
+        all_data = await fetch_dynamic_api(token, "sub_topics", {"examid": exam_id, "subjectid": "0", "start": "-1"})
         
-        stream, filename, v_cnt, p_cnt = extract_recursive_txt(session, all_data, exam_id)
+        stream, filename, v_cnt, p_cnt = extract_recursive_txt(all_data, exam_id)
         
         caption = f"✅ **Extraction Complete!**\n\n🆔 Exam ID: `{exam_id}`\n🎥 Videos: {v_cnt}\n📄 PDFs: {p_cnt}"
         await query.message.reply_document(document=stream, file_name=filename, caption=caption)
