@@ -1,14 +1,13 @@
-# core/teachx.py
 import io
 import urllib.parse
 import logging
-from curl_cffi import requests as cffi_requests
+from typing import Tuple, List, Dict, Any, Optional
+from curl_cffi.requests import AsyncSession
 from config import BASE_URL, ENDPOINTS, DEFAULT_HEADERS
 
 logging.basicConfig(level=logging.INFO)
 
-def get_auth_session(token: str = ""):
-    session = cffi_requests.Session(impersonate="chrome110")
+def get_auth_headers(token: str = "") -> Dict[str, str]:
     headers = DEFAULT_HEADERS.copy()
     if token:
         clean_token = token.replace("Bearer ", "").strip().strip('"')
@@ -16,43 +15,42 @@ def get_auth_session(token: str = ""):
             "Authorization": f"Bearer {clean_token}",
             "token": clean_token,
         })
-    session.headers.update(headers)
-    return session
+    return headers
 
-def send_otp_api(phone: str):
-    session = get_auth_session()
-    url = f"{BASE_URL}{ENDPOINTS['send_otp']}"
-    try:
-        res = session.get(url, params={"phone": phone}, timeout=15)
-        return res.json()
-    except Exception as e:
-        logging.error(f"Send OTP Error: {e}")
-        return None
+async def send_otp_api(phone: str) -> Optional[Dict[str, Any]]:
+    async with AsyncSession(impersonate="chrome120") as session:
+        url = f"{BASE_URL}{ENDPOINTS['send_otp']}"
+        try:
+            res = await session.get(url, params={"phone": phone}, headers=get_auth_headers(), timeout=15)
+            return res.json()
+        except Exception as e:
+            logging.error(f"Send OTP Error: {e}")
+            return None
 
-def verify_otp_api(phone: str, otp: str):
-    session = get_auth_session()
-    url = f"{BASE_URL}{ENDPOINTS['verify_otp']}"
-    device_id = f"WebBrowser{phone}niudjrtwvx"
-    params = {
-        "useremail": phone,
-        "otp": otp,
-        "device_id": device_id,
-        "mydeviceid": "",
-        "mydeviceid2": ""
-    }
-    try:
-        res = session.get(url, params=params, timeout=15)
-        return res.json()
-    except Exception as e:
-        logging.error(f"Verify OTP Error: {e}")
-        return None
+async def verify_otp_api(phone: str, otp: str) -> Optional[Dict[str, Any]]:
+    async with AsyncSession(impersonate="chrome120") as session:
+        url = f"{BASE_URL}{ENDPOINTS['verify_otp']}"
+        device_id = f"WebBrowser{phone}niudjrtwvx"
+        params = {
+            "useremail": phone,
+            "otp": otp,
+            "device_id": device_id,
+            "mydeviceid": "",
+            "mydeviceid2": ""
+        }
+        try:
+            res = await session.get(url, params=params, headers=get_auth_headers(), timeout=15)
+            return res.json()
+        except Exception as e:
+            logging.error(f"Verify OTP Error: {e}")
+            return None
 
-def auto_extract_keys(item: dict) -> dict:
+def auto_extract_keys(item: Dict[str, Any]) -> Dict[str, str]:
     if not isinstance(item, dict):
         return {"id": "", "title": str(item), "video": "", "pdf": ""}
 
     title_keys = ["name", "title", "topic_name", "subject_name", "exam_name", "course_name", "chapter_name"]
-    title = next((str(item[k]) for k in title_keys if k in item and item[k]), "Item")
+    title = next((str(item[k]) for k in title_keys if k in item and item[k]), "Untitled Item")
 
     id_keys = ["id", "examid", "subjectid", "topicid", "course_id", "exam_id", "subject_id"]
     item_id = next((str(item[k]) for k in id_keys if k in item and item[k]), "")
@@ -63,8 +61,8 @@ def auto_extract_keys(item: dict) -> dict:
     pdf_keys = ["pdf_url", "pdf", "attachment", "notes", "notes_url", "file", "download_url"]
     pdf = next((str(item[k]) for k in pdf_keys if k in item and item[k]), "")
 
-    # Extract Direct PDF from ClassX Viewer URL if present
-    if "pdfjs-latest" in pdf or "file=" in pdf:
+    # Extract Direct Encrypted/Signed PDF URL from ClassX Viewer if exists
+    if "pdfjs" in pdf or "file=" in pdf:
         try:
             parsed = urllib.parse.urlparse(pdf)
             queries = urllib.parse.parse_qs(parsed.query)
@@ -75,25 +73,27 @@ def auto_extract_keys(item: dict) -> dict:
 
     return {"id": item_id, "title": title, "video": video, "pdf": pdf}
 
-def fetch_dynamic_api(session, endpoint_key: str, params: dict = None):
+async def fetch_dynamic_api(token: str, endpoint_key: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     endpoint = ENDPOINTS.get(endpoint_key, endpoint_key)
     url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
-    try:
-        res = session.get(url, params=params, timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            if isinstance(data, list):
-                return data
-            elif isinstance(data, dict):
-                for key in ["data", "list", "topics", "subjects", "classes", "exams", "courses", "result"]:
-                    if key in data and isinstance(data[key], list):
-                        return data[key]
-                return [data]
-    except Exception as e:
-        logging.error(f"Dynamic API Fetch Error ({endpoint_key}): {e}")
+    
+    async with AsyncSession(impersonate="chrome120") as session:
+        try:
+            res = await session.get(url, params=params, headers=get_auth_headers(token), timeout=20)
+            if res.status_code == 200:
+                data = res.json()
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    for key in ["data", "list", "topics", "subjects", "classes", "exams", "courses", "result"]:
+                        if key in data and isinstance(data[key], list):
+                            return data[key]
+                    return [data]
+        except Exception as e:
+            logging.error(f"Dynamic API Fetch Error ({endpoint_key}): {e}")
     return []
 
-def extract_recursive_txt(session, initial_data: list, exam_id: str) -> tuple:
+def extract_recursive_txt(initial_data: list, exam_id: str) -> Tuple[io.BytesIO, str, int, int]:
     txt = f"==================================================\n"
     txt += f"      AUTOMATIC DYNAMIC EXTRACTOR (EXAM ID: {exam_id})\n"
     txt += f"==================================================\n\n"
