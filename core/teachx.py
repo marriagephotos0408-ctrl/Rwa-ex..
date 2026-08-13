@@ -7,7 +7,7 @@ from curl_cffi import requests as cffi_requests
 BASE_URL = "https://rozgarapinew.teachx.in"
 
 def decode_jwt(token: str) -> dict:
-    """JWT Token को Decode करके अंदर से user_id, email, mobile निकालने के लिए"""
+    """JWT Token से UserID और विवरण निकालने के लिए"""
     try:
         clean_token = token.replace("Bearer ", "").strip()
         parts = clean_token.split(".")
@@ -32,7 +32,6 @@ def get_auth_session(token: str = ""):
         "Client-Service": "Appx",
         "Auth-Key": "appxapi",
         "app-token": "appxapi",
-        "Content-Type": "application/json",
         "Host": "rozgarapinew.teachx.in"
     }
     
@@ -76,26 +75,14 @@ def get_user_profile(session, token: str, user_id: str = "") -> dict:
                 final_id = str(user_data.get("userid") or user_data.get("id") or user_data.get("user_id") or extracted_id)
                 contact = f"{email} | {phone}" if phone and email != "N/A" else (email if email != "N/A" else phone)
                 
-                return {
-                    "name": name,
-                    "email": contact or "N/A",
-                    "id": final_id
-                }
+                return {"name": name, "email": contact or "N/A", "id": final_id}
     except Exception as e:
         logging.error(f"Profile API Error: {e}")
 
-    return {
-        "name": jwt_name or "Verified User",
-        "email": jwt_email or "N/A",
-        "id": extracted_id
-    }
+    return {"name": jwt_name or "Verified User", "email": jwt_email or "N/A", "id": extracted_id}
 
 def get_my_courses(session, user_id: str = ""):
-    """पेड कोर्सेस फ़ैच करने के लिए"""
-    urls = [
-        f"{BASE_URL}/get/mycourseweb",
-        f"{BASE_URL}/get/mycourse"
-    ]
+    urls = [f"{BASE_URL}/get/mycourseweb", f"{BASE_URL}/get/mycourse"]
     params = {"userid": str(user_id)} if user_id else {}
     
     for url in urls:
@@ -107,7 +94,6 @@ def get_my_courses(session, user_id: str = ""):
             if response.status_code == 200:
                 data = response.json()
                 courses = []
-
                 if isinstance(data, list):
                     courses = data
                 elif isinstance(data, dict):
@@ -122,10 +108,10 @@ def get_my_courses(session, user_id: str = ""):
             
     return []
 
-# --- फ्री कोर्सेस वाले नए API फंक्शन्स ---
+# --- Free Content APIs ---
 
 def get_free_exams(session):
-    """फ्री कोर्सेस/Exams की लिस्ट फ़ैच करने के लिए (/get/examslist)"""
+    """फ्री एग्जाम्स और कोर्सेस की लिस्ट (/get/examslist)"""
     url = f"{BASE_URL}/get/examslist"
     try:
         res = session.get(url, timeout=15)
@@ -134,19 +120,15 @@ def get_free_exams(session):
             if isinstance(data, list):
                 return data
             elif isinstance(data, dict):
-                return data.get("data") or data.get("exams") or data.get("list") or []
+                return data.get("data") or data.get("exams") or data.get("list") or [data]
     except Exception as e:
         logging.error(f"Error fetching free exams list: {e}")
     return []
 
-def get_youtube_class_topics(session, exam_id: str, subject_id: str = "1187", start: str = "-1"):
-    """फ्री क्लासेज और टॉपिक्स फ़ैच करने के लिए (/get/youtubeclasstopicapi)"""
+def get_youtube_class_topics(session, exam_id: str = "62", subject_id: str = "1187", start: str = "-1"):
+    """यूट्यूब क्लास टॉपिक्स (/get/youtubeclasstopicapi)"""
     url = f"{BASE_URL}/get/youtubeclasstopicapi"
-    params = {
-        "examid": str(exam_id),
-        "subjectid": str(subject_id),
-        "start": str(start)
-    }
+    params = {"examid": str(exam_id), "subjectid": str(subject_id), "start": str(start)}
     try:
         res = session.get(url, params=params, timeout=15)
         if res.status_code == 200:
@@ -159,13 +141,10 @@ def get_youtube_class_topics(session, exam_id: str, subject_id: str = "1187", st
         logging.error(f"Error fetching YT topics: {e}")
     return []
 
-def get_telegram_course_info(session, course_id: str, item_type: str = "6"):
-    """टेलीग्राम लिंक और डिटेल्स निकालने के लिए (/get/telegram)"""
+def get_telegram_course_info(session, course_id: str = "62", item_type: str = "6"):
+    """टेलीग्राम लिंक डेटा (/get/telegram)"""
     url = f"{BASE_URL}/get/telegram"
-    params = {
-        "course_id": str(course_id),
-        "item_type": str(item_type)
-    }
+    params = {"course_id": str(course_id), "item_type": str(item_type)}
     try:
         res = session.get(url, params=params, timeout=15)
         if res.status_code == 200:
