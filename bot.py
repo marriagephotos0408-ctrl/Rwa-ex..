@@ -3,7 +3,7 @@ from keep_alive import keep_alive
 
 keep_alive()  # सर्वर स्टार्ट करेगा ताकि Render को Port मिल जाए
 
-# बाकी का Telegram Bot Code...
+# बाकी का Telegram Bot Code..
 
 import os
 import json
