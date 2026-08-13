@@ -1,6 +1,7 @@
 # bot.py
 import os
 import logging
+import html
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
@@ -63,7 +64,7 @@ async def dynamic_get_handler(client: Client, message: Message):
         parsed = auto_extract_keys(item)
         s_id = parsed["id"] or "0"
         s_title = parsed["title"]
-        buttons.append([InlineKeyboardButton(f"📁 {s_title}", callback_data=f"dyn_sub_{exam_id}_{s_id}")])
+        buttons.append([InlineKeyboardButton(f"📁 {s_title[:30]}", callback_data=f"dyn_sub_{exam_id}_{s_id}")])
 
     buttons.append([InlineKeyboardButton("📥 Download Full TXT File", callback_data=f"dyn_dl_{exam_id}")])
 
@@ -84,13 +85,17 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
             await query.message.reply_text("❌ डेटा लोड नहीं हो सका।")
             return
 
-        text = f"🆓 **Free Exams List ({len(raw_exams[:15])}):**\n\n"
+        # HTML formatting used to prevent Markdown EntityBoundsInvalid error
+        text = f"<b>🆓 Free Exams List ({len(raw_exams[:15])}):</b>\n\n"
         for idx, item in enumerate(raw_exams[:15], 1):
             parsed = auto_extract_keys(item)
-            text += f"{idx}. **{parsed['title']}**\n🆔 Exam ID: `{parsed['id']}`\n\n"
+            clean_title = html.escape(parsed['title'])
+            text += f"{idx}. <b>{clean_title}</b>\n🆔 Exam ID: <code>{parsed['id']}</code>\n\n"
 
-        text += "💡 **डेटा देखने के लिए लिखें:** `/get <exam_id>`"
-        await query.message.reply_text(text)
+        text += "💡 <b>डेटा देखने के लिए लिखें:</b> <code>/get &lt;exam_id&gt;</code>"
+        
+        # HTML Parse Mode to handle special characters safely
+        await query.message.reply_text(text, parse_mode=enums.ParseMode.HTML if hasattr(pyrogram, 'enums') else None)
 
     elif data == "btn_help":
         await query.answer()
@@ -111,7 +116,7 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
             parsed = auto_extract_keys(item)
             t_id = parsed["id"] or "0"
             t_title = parsed["title"]
-            buttons.append([InlineKeyboardButton(f"🔹 {t_title}", callback_data=f"dyn_cls_{exam_id}_{sub_id}_{t_id}")])
+            buttons.append([InlineKeyboardButton(f"🔹 {t_title[:30]}", callback_data=f"dyn_cls_{exam_id}_{sub_id}_{t_id}")])
 
         await query.message.reply_text("📌 **Topics List:**", reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -127,12 +132,13 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
             await query.message.reply_text("❌ इस Topic में कोई Classes नहीं मिलीं।")
             return
 
-        text = f"🎥 **Classes & PDFs ({len(raw_classes)}):**\n\n"
+        text = f"🎥 <b>Classes & PDFs ({len(raw_classes)}):</b>\n\n"
         buttons = []
 
         for idx, item in enumerate(raw_classes[:8], 1):
             parsed = auto_extract_keys(item)
-            text += f"**{idx}. {parsed['title']}**\n"
+            clean_title = html.escape(parsed['title'])
+            text += f"<b>{idx}. {clean_title}</b>\n"
             
             row = []
             if parsed['video']:
@@ -142,7 +148,11 @@ async def dynamic_cb_handler(client: Client, query: CallbackQuery):
             if row:
                 buttons.append(row)
 
-        await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
+        await query.message.reply_text(
+            text, 
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+            parse_mode=enums.ParseMode.HTML if hasattr(pyrogram, 'enums') else None
+        )
 
     elif data.startswith("dyn_dl_"):
         exam_id = data.split("_")[2]
