@@ -25,6 +25,7 @@ def get_auth_session(token: str):
         "Authorization": bearer_token,
         "token": clean_token,
         "authorisation": clean_token,
+        "Content-Type": "application/json",
         "Host": "rozgarapinew.teachx.in"
     }
     
@@ -32,37 +33,68 @@ def get_auth_session(token: str):
     return session
 
 def get_user_profile(session, user_id: str = "") -> dict:
-    """/get/get_user_dt एंडपॉइंट से यूज़र डिटेल्स लोड करने के लिए"""
-    urls = [
-        f"{BASE_URL}/get/get_user_dt",
-        f"{BASE_URL}/get/get_my_profile"
-    ]
-    
+    """/get/get_user_dt?userid=... से accurate profile data निकालने का फ़ंक्शन"""
+    url = f"{BASE_URL}/get/get_user_dt"
     params = {"userid": str(user_id)} if user_id else {}
     
-    for url in urls:
-        try:
-            res = session.get(url, params=params, timeout=15)
-            if res.status_code == 200:
-                data = res.json()
-                user_data = data.get("data") or data.get("user") or data.get("user_details") or data
-                
-                if isinstance(user_data, list) and len(user_data) > 0:
-                    user_data = user_data[0]
-
-                if isinstance(user_data, dict):
-                    return {
-                        "name": user_data.get("name") or user_data.get("username") or user_data.get("full_name") or "User",
-                        "email": user_data.get("email") or user_data.get("phone") or user_data.get("mobile") or "N/A",
-                        "id": str(user_data.get("id") or user_data.get("userid") or user_data.get("user_id") or user_id)
-                    }
-        except Exception as e:
-            logging.error(f"Profile fetch failed for {url}: {e}")
+    try:
+        res = session.get(url, params=params, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
             
-    return {"name": "User", "email": "N/A", "id": str(user_id)}
+            # API JSON structure handle करना
+            user_data = data
+            if isinstance(data, dict):
+                user_data = data.get("data") or data.get("user") or data.get("user_details") or data
+            
+            if isinstance(user_data, list) and len(user_data) > 0:
+                user_data = user_data[0]
+
+            if isinstance(user_data, dict):
+                # exact keys check based on Web Form
+                name = (
+                    user_data.get("full_name") or 
+                    user_data.get("fullname") or 
+                    user_data.get("name") or 
+                    user_data.get("username") or 
+                    "User"
+                )
+                
+                email = (
+                    user_data.get("email") or 
+                    user_data.get("email_address") or 
+                    user_data.get("useremail") or 
+                    "N/A"
+                )
+                
+                phone = (
+                    user_data.get("phone") or 
+                    user_data.get("phone_number") or 
+                    user_data.get("mobile") or 
+                    "N/A"
+                )
+                
+                uid = str(
+                    user_data.get("userid") or 
+                    user_data.get("user_id") or 
+                    user_data.get("id") or 
+                    user_id
+                )
+                
+                contact_info = f"{email} | {phone}" if phone != "N/A" and email != "N/A" else (email if email != "N/A" else phone)
+                
+                return {
+                    "name": name,
+                    "email": contact_info,
+                    "id": uid
+                }
+    except Exception as e:
+        logging.error(f"Error in get_user_profile: {e}")
+
+    return {"name": "Verified User", "email": "N/A", "id": str(user_id)}
 
 def get_my_courses(session, user_id: str = ""):
-    """कोर्सेस फ़ैच करने के लिए"""
+    """कोर्सेस लोड करने का फ़ंक्शन"""
     urls = [
         f"{BASE_URL}/get/mycourseweb",
         f"{BASE_URL}/get/mycourse"
